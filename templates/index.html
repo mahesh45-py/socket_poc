@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Realtime Drawing Board</title>
+    <style>
+        #board { border: 1px solid #000; touch-action: none; }
+        #users { margin: 10px 0; }
+        #controls { margin-bottom: 10px; }
+    </style>
+</head>
+<body>
+    <div id="controls">
+        <button id="clearBtn">Clear Board</button>
+    </div>
+    <div id="users">
+        <strong>Active Users:</strong>
+        <ul id="userList"></ul>
+    </div>
+    <canvas id="board" width="800" height="600"></canvas>
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <script>
+        let username = '';
+        while (!username) {
+            username = prompt("Enter your name (or nickname):");
+        }
+
+        const canvas = document.getElementById('board');
+        const ctx = canvas.getContext('2d');
+        let drawing = false;
+        const socket = io();
+
+        // Send username to server
+        socket.emit('join', {username: username});
+
+        function draw(x, y, type) {
+            if (type === 'start') {
+                ctx.beginPath();
+                ctx.moveTo(x, y);
+            } else if (type === 'draw') {
+                ctx.lineTo(x, y);
+                ctx.stroke();
+            }
+        }
+
+        canvas.addEventListener('pointerdown', e => {
+            drawing = true;
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            socket.emit('draw_event', {x, y, type: 'start'});
+        });
+
+        canvas.addEventListener('pointermove', e => {
+            if (!drawing) return;
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            socket.emit('draw_event', {x, y, type: 'draw'});
+        });
+
+        canvas.addEventListener('pointerup', e => {
+            drawing = false;
+        });
+
+        socket.on('draw_event', data => {
+            draw(data.x, data.y, data.type);
+        });
+
+        // Load history
+        socket.emit('get_history');
+        socket.on('history', events => {
+            events.forEach(e => draw(e.x, e.y, e.type));
+        });
+
+        // Handle user list
+        socket.on('user_list', users => {
+            const userList = document.getElementById('userList');
+            userList.innerHTML = '';
+            users.forEach(u => {
+                const li = document.createElement('li');
+                li.textContent = u;
+                userList.appendChild(li);
+            });
+        });
+
+        // Clear board
+        document.getElementById('clearBtn').onclick = function() {
+            socket.emit('clear_board');
+        };
+        socket.on('clear_board', () => {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+        });
+    </script>
+</body>
+</html>
